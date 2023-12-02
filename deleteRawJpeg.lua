@@ -26,25 +26,41 @@ end
 local TRASH_DIRECTORY = os.getenv("HOME") .. "/.local/share/Trash/files"
 local USE_TRASH = df.check_if_file_exists(TRASH_DIRECTORY .. "/")
 
--- Fetches to JPEG equivalent of a given image
-local function find_jpeg(image)
-  local test_filepath = df.sanitize_filename(df.chop_filetype(tostring(image)))
-  local command = "mv " .. test_filepath .. "* \'" .. TRASH_DIRECTORY .. "\'"
-
+local function execute_command(command)
   local output = io.popen(command)
   local exit_code = output:read("*all") -- not really exit code but rather command output. I'll deal with naming later
   output:close()
-  if string.len(exit_code) then
-    dt.database.delete(image)
-  end
   return string.len(exit_code) == 0
 end
 
-local function delete_files()
-  local selected_images = dt.gui.selection()
-  for _, image in pairs(selected_images) do
-    local jpeg = find_jpeg(image)
+-- Fetches to JPEG equivalent of a given image
+local function remove(image)
+  local test_filepath = df.sanitize_filename(df.chop_filetype(tostring(image)))
+  local remove_command = "mv " .. test_filepath .. "* \'" .. TRASH_DIRECTORY .. "\'"
+
+  local is_removed = execute_command(remove_command)
+  if is_removed then
+    dt.database.delete(image)
   end
+  return is_removed
+end
+
+local function process_selection()
+  local selected_images = dt.gui.selection()
+  local image_count = #selected_images
+  local job = dt.gui.create_job('Removing '..image_count..' image(s)', true)
+  local percent_step = 1 / image_count
+
+  for _, image in pairs(selected_images) do
+    local is_removed = remove(image)
+    if not is_removed then
+      dt.print(_("Error removing " ..image.name))
+    end
+    job.percent = job.percent + percent_step
+  end
+
+  job.valid = false
+  dt.print(_("Removed " ..image_count.. " image(s)"))
 end
 
 -- declare a local namespace and a couple of variables we'll need to install the module
@@ -70,7 +86,7 @@ local function install_module()
         orientation = "vertical",
         dt.new_widget("button")({
           label = _("Delete files"),
-          clicked_callback = delete_files
+          clicked_callback = process_selection
         }),
         table.unpack(mE.widgets),
       }),
