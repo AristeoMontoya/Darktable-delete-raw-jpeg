@@ -11,7 +11,21 @@ script_data.destroy_method = nil -- set to hide for libs since we can't destroy 
 script_data.restart = nil        -- how to restart the (lib) script after it's been hidden - i.e. make it visible again
 script_data.show = nil           -- only required for libs since the destroy_method only hides them
 
--- translation
+-- TODO: This may not play well with translations, however I'm not using them at the moment
+-- Figure out a way to support translations
+local labels = {
+	delete_button = {
+		default = "Delete files",
+		prompt = "Confirm deletion of %d file(s)"
+	},
+	cancel_button = {
+		default = "Cancel"
+	},
+	toast = {
+		no_images = "No images selected"
+	}
+}
+
 
 -- https://www.darktable.org/lua-api/index.html#darktable_gettext
 local gettext = dt.gettext
@@ -33,7 +47,8 @@ local function execute_command(command)
   return string.len(exit_code) == 0
 end
 
--- Fetches to JPEG equivalent of a given image
+--- Fetches to JPEG equivalent of a given image
+--- @param image any: Target file to remove
 local function remove(image)
   local test_filepath = df.sanitize_filename(df.chop_filetype(tostring(image)))
   local remove_command = "mv " .. test_filepath .. "* \'" .. TRASH_DIRECTORY .. "\'"
@@ -45,14 +60,35 @@ local function remove(image)
   return is_removed
 end
 
-local function process_selection()
+local confirmed = false
+
+--- Resets plugin state and hides the cancel button.
+--- @param delete_button any: Button that doubles as confirmation prompt.
+--- @param cancel_button any: Cancel button to hide.
+local function reset_confirmation(delete_button, cancel_button)
+  confirmed = false
+  delete_button.label = labels.delete_button.default
+  cancel_button.visible = false
+end
+
+--- @param delete_button any: Starts the deletion process and doubles as a confirmation prompt.
+--- @param cancel_button any: Appears when delete_button is showing a confirmation prompt. Cancels the process.
+local function process_selection(delete_button, cancel_button)
   local selected_images = dt.gui.selection()
   local image_count = #selected_images
 
   if image_count == 0 then
-    dt.print_toast("No images selected")
+    dt.print_toast(labels.toast.no_images)
+    reset_confirmation(delete_button, cancel_button)
     return
-  	end
+  end
+
+  if not confirmed then
+    confirmed = true
+    delete_button.label = string.format(labels.delete_button.prompt, image_count)
+    cancel_button.visible = true
+    return
+  end
 
   local job = dt.gui.create_job('Removing '..image_count..' image(s)', true)
   local percent_step = 1 / image_count
@@ -68,6 +104,7 @@ local function process_selection()
   job.valid = false
   dt.print(_("Removed " ..image_count.. " image(s)"))
   dt.gui.libs.collect.filter(dt.gui.libs.collect.filter())
+  reset_confirmation(delete_button, cancel_button)
 end
 
 -- declare a local namespace and a couple of variables we'll need to install the module
@@ -79,6 +116,18 @@ local mE = {
 
 local function install_module()
   if not mE.module_installed then
+    local cancel_button = dt.new_widget("button")({
+      label = labels.cancel_button.default,
+      visible = false,
+    })
+
+    local delete_button = dt.new_widget("button")({
+      label = labels.delete_button.default,
+    })
+
+    delete_button.clicked_callback = function() process_selection(delete_button, cancel_button) end
+    cancel_button.clicked_callback = function() reset_confirmation(delete_button, cancel_button) end
+
     -- https://www.darktable.org/lua-api/index.html#darktable_register_lib
     dt.register_lib(
       script_data.module_name,
@@ -91,10 +140,8 @@ local function install_module()
       .new_widget("box") -- widget
       ({
         orientation = "vertical",
-        dt.new_widget("button")({
-          label = _("Delete files"),
-          clicked_callback = process_selection
-        }),
+        delete_button,
+        cancel_button,
         table.unpack(mE.widgets),
       }),
       nil, -- view_enter
