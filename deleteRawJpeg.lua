@@ -48,6 +48,12 @@ end
 local function process_selection()
   local selected_images = dt.gui.selection()
   local image_count = #selected_images
+
+  if image_count == 0 then
+    dt.print_toast("No images selected")
+    return
+  	end
+
   local job = dt.gui.create_job('Removing '..image_count..' image(s)', true)
   local percent_step = 1 / image_count
 
