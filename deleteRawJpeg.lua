@@ -67,6 +67,7 @@ local function process_selection()
 
   job.valid = false
   dt.print(_("Removed " ..image_count.. " image(s)"))
+  dt.gui.libs.collect.filter(dt.gui.libs.collect.filter())
 end
 
 -- declare a local namespace and a couple of variables we'll need to install the module
